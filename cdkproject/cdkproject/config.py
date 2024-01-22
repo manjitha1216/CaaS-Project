@@ -10,7 +10,7 @@ VPC = 'CDKvpc'
 
 INTERNET_GATEWAY = 'internet-gateway'
 NAT_GATEWAY = 'nat-gateway'
-REGION = 'us-east-1'
+REGION = 'eu-central-1'
 
 # route tables
 PUBLIC_ROUTE_TABLE = 'public-route-table'
@@ -43,13 +43,13 @@ PRIVATE_INSTANCE = 'private-instance'
 
 SUBNET_CONFIGURATION = {
     PUBLIC_SUBNET: {
-        'availability_zone': 'us-east-1a',
+        'availability_zone': 'eu-central-1a',
         'cidr_block': '10.0.1.0/24',
         'map_public_ip_on_launch': True,
         'route_table_id': PUBLIC_ROUTE_TABLE,
     },
     PRIVATE_SUBNET: {
-        'availability_zone': 'us-east-1b',
+        'availability_zone': 'eu-central-1b',
         'cidr_block': '10.0.2.0/24',
         'map_public_ip_on_launch': False,
         'route_table_id': PRIVATE_ROUTE_TABLE,
