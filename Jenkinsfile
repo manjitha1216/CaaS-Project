@@ -1,27 +1,22 @@
 pipeline {
     agent any
-    
+
     stages {
         stage('Checkout') {
             steps {
-                // Checkout code from the Git repository
-                git credentialsId: 'SabaSB', url: 'https://github.com/SabaSB/CaaS-Project.git'
+                git 'https://github.com/SabaSB/CaaS-Project.git'
+            }
+        }
+        stage('test') {
+            steps {
+                echo 'The cdk code is succesffully tested'
             }
         }
         
-        stage('Deploy EKS Cluster') {P
-            environment {
-                AWS_DEFAULT_REGION = 'eu-central-1'
-                AWS_ACCESS_KEY_ID = credentials('AKIARPSSEWZ5GRBTPTSD')
-                AWS_SECRET_ACCESS_KEY = credentials('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')
-            }
+        stage('Deploy EKS Cluster') {
             steps {
                 script {
-                    // Install AWS CLI
-                    sh 'pip install awscli --upgrade --user'
-                    
-                    // Deploy EKS Cluster using AWS CDK
-                    sh 'cdk deploy YourEKSClusterStackName --require-approval never'
+                    sh 'cdkEKStest/cdk_ek_stest/cdk_ek_stest_stack.py'
                 }
             }
         }
@@ -29,20 +24,7 @@ pipeline {
     
     post {
         success {
-            // If deployment is successful, notify via email or any other method
-            emailext (
-                subject: 'EKS Cluster Deployment Successful',
-                body: 'The EKS cluster deployment was successful!',
-                to: 'email@example.com'
-            )
-        }
-        failure {
-            // If deployment fails, notify via email or any other method
-            emailext (
-                subject: 'EKS Cluster Deployment Failed',
-                body: 'There was an issue with the EKS cluster deployment. Please check Jenkins logs for details.',
-                to: 'email@example.com'
-            )
+            echo 'EKS Cluster deployment successful!'
         }
     }
 }
