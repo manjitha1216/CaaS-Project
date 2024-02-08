@@ -13,8 +13,11 @@ from aws_cdk import (
     aws_sns_subscriptions as subs,
     aws_s3 as s3,
     aws_lambda as lambda_,
+    aws_events as events,
+    aws_events_targets as targets,
     RemovalPolicy
 )
+from aws_cdk import aws_logs as logs
 from constructs import Construct
 from aws_cdk.aws_sns import (
     Topic  
@@ -141,6 +144,51 @@ class AwsCaaSProjectStack(Stack):
         # description="IAM Role ARN for EKS cluster administrator",  # Add a description for clarity
         # )
 
+        # # Create an IAM Role to be assumed by admins
+        # masters_role = aws_iam.Role(
+        #     self,
+        #     'EksMastersRole',
+        #     assumed_by=aws_iam.AccountRootPrincipal()
+        # )
+
+        # # Attach an IAM Policy to that Role so users can access the Cluster
+        # masters_role_policy = aws_iam.PolicyStatement(
+        #     actions=['eks:DescribeCluster'],
+        #     resources=['*'],  # Adjust the resource ARN if needed
+        # )
+        # masters_role.add_to_policy(masters_role_policy)
+
+        # # Define the cluster
+        # cluster = aws_eks.Cluster(
+        #     self, 'EKS-Cluster',
+        #     cluster_name='eks-cluster',
+        #     version=aws_eks.KubernetesVersion.V1_28,
+        #     vpc=vpc,
+        #     default_capacity=0
+        # )
+
+        # # Add the masters role to the cluster
+        # cluster.aws_auth.add_masters_role(masters_role)
+
+        # # Add the user to the cluster's admins
+        # admin_user = aws_iam.User.from_user_arn(self, "AdminUser", user_arn="arn:aws:iam::757516528332:user/cdk-project")
+        # cluster.aws_auth.add_user_mapping(admin_user, groups=["system:masters"])
+
+        # # # Output the EKS cluster name
+        # CfnOutput(
+        #  self,
+        #  'ClusterNameOutput',
+        #  value=cluster.cluster_name,
+        #  )
+
+        #  #Output the EKS master role ARN
+        # CfnOutput(
+        #  self,
+        #  'ClusterMasterRoleOutput',
+        #  value=masters_role.role_arn,
+        #  description="IAM Role ARN for EKS cluster administrator",  # Add a description for clarity
+        #  )
+
         #Creation of AWS EKS cluster
         cluster = aws_eks.Cluster(
              self, 'EKS-Cluster',
@@ -171,7 +219,7 @@ class AwsCaaSProjectStack(Stack):
         
         
         #Define an email address for notification
-        email_address = "nataliya.maroz@accenture.com"     
+        email_address = "Manjitha.Manchanayake@accenture.com"     
         
         # Create SNS topics for EKS and RDS
         eks_sns_topic = Topic(self, 'EKS SNS topic',display_name='EKS topic')
@@ -239,6 +287,7 @@ class AwsCaaSProjectStack(Stack):
     #         cluster=cluster
     #     )
 
+
         # Output the RDS endpoint for reference
         CfnOutput(self, 'RDS-Endpoint', value=myDB.db_instance_endpoint_address)
         CfnOutput(self, "RDSInstanceArn", value=myDB.instance_arn)
@@ -250,9 +299,10 @@ class AwsCaaSProjectStack(Stack):
             threshold=40,                   #triggered if the CPU utilization exceeds 90%.
             evaluation_periods=1,           #how many times the line will be crossed until alarm rings
             alarm_name='RDSCPUHighAlarm',
+            # removal_policy= RemovalPolicy.DESTROY,
             actions_enabled=True
         )
-        
+    
         rds_db_connection_alarm = Alarm(
             self, 'RDSConnectionsEvent',
             metric=myDB.metric_database_connections(),
@@ -261,11 +311,112 @@ class AwsCaaSProjectStack(Stack):
             alarm_name='RDSConnectionsEvent',
             actions_enabled=True
         )
-        
+    
 
         # Subscribe SNS topics to CloudWatch alarms
         rds_cpu_alarm.add_alarm_action(SnsAction(rds_sns_topic)) #subscribe sns topic to cloudwatch alarm
         rds_db_connection_alarm.add_alarm_action(SnsAction(rds_sns_topic))
+
+
+##############################################################################################
+
+#S3 bucket creation
+        log_export_bucket = s3.Bucket(
+            self, 'LogExportBucket' , 
+            bucket_name='logexportbucket7')
+        
+        # Define the bucket policy
+        bucket_policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "uploadlogsmanjitha",
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "logs.eu-central-1.amazonaws.com"
+                    },
+                    "Action": "s3:GetBucketAcl",
+                    "Resource": log_export_bucket.bucket_arn
+                },
+                {
+                    "Sid": "uploadlogs",
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "logs.eu-central-1.amazonaws.com"
+                    },
+                    "Action": "s3:PutObject",
+                    "Resource": log_export_bucket.bucket_arn
+                }
+            ]
+        }
+
+        # # Attach the bucket policy to the S3 bucket
+        # s3.BucketPolicy(
+        #     self, 'LogsBucketPolicy',
+        #     bucket=log_export_bucket,
+        #     policy_document=aws_iam.PolicyDocument.from_json(bucket_policy)
+        # )
+
+############################################################################################################################################
+
+        # Create an IAM role for the Lambda function
+        lambda_role = aws_iam.Role(
+            self, 'LambdaExecutionRole',
+            assumed_by=aws_iam.ServicePrincipal('lambda.amazonaws.com'),
+            managed_policies=[
+                aws_iam.ManagedPolicy.from_aws_managed_policy_name('service-role/AWSLambdaBasicExecutionRole'),
+                aws_iam.ManagedPolicy.from_aws_managed_policy_name('service-role/AWSLambdaRole'),
+                aws_iam.ManagedPolicy.from_aws_managed_policy_name('AmazonS3FullAccess'),
+                aws_iam.ManagedPolicy.from_aws_managed_policy_name('CloudWatchFullAccess')
+            ]
+        )
+
+        # Create the Lambda function
+        export_logs_lambda = lambda_.Function(
+
+            self,
+            "LogsLambdaFunction",
+            handler="lambda_handler.handler",
+            runtime=lambda_.Runtime.PYTHON_3_8,
+            code=lambda_.Code.from_asset("lambda"),
+            role=lambda_role
+        )
+
+        # Create an Event Rule to trigger the Lambda function daily
+        event_rule = events.Rule(
+            self, 'ExportLogsEventRule',
+            schedule=events.Schedule.cron(hour='14', minute='35')
+        )
+
+        event_rule.add_target(targets.LambdaFunction(export_logs_lambda))
+
+
+#########################//////////////////////////////////////////////////////////////////////////////////#################################
+        # export_logs_lambda = lambda_.Function(
+        # self, 'ExportLogsLambda',
+        # runtime=lambda_.Runtime.PYTHON_3_8,
+        # handler='export_logs.handler',
+        # code=lambda_.Code.from_asset('export_logs'),
+        # environment={
+        #     'LOG_GROUP_NAME': '/aws/rds/instance/awscaasprojectstack-mydatabase1e2517db-ljeqsyoosnfl/error',
+        #     #'S3_BUCKET_NAME': log_export_bucket.bucket_name,
+        #     'S3_BUCKET_NAME': 'logsbucketmanjitha',
+        #     'S3_KEY_PREFIX': 'cloudwatch-logscdk/'
+        #     'NDAYS': '1',
+        # },
+        # timeout=Duration.seconds(30),
+        # )
+
+        # log_export_bucket.grant_write(export_logs_lambda)
+
+        # export_logs_rule = events.Rule(
+        # self, 'ExportLogsRule',
+        # schedule=events.Schedule.rate(Duration.minutes(2))
+        # )
+        # export_logs_rule.add_target(targets.LambdaFunction(export_logs_lambda))
+
+
+####################################################################################################
 
         # # Create CloudWatch Logs for RDS
         # rds_log_group = LogGroup(self, "RDSLogGroup",
